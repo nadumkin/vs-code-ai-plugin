@@ -1,0 +1,25 @@
+{
+  "perProject": 5,
+  "task_ids": [
+    "PA19/Cell.java",
+    "PA19/FillableCell.java",
+    "PA19/TerminationCell.java",
+    "PA19/Wall.java",
+    "PA19/Map.java",
+    "PA20/Archer.java",
+    "PA20/Knight.java",
+    "PA20/ConsolePlayer.java",
+    "PA20/RandomPlayer.java",
+    "PA20/JesonMor.java",
+    "PA21/GameBoardController.java",
+    "PA21/GameController.java",
+    "PA21/Entity.java",
+    "PA21/EntityCell.java",
+    "PA21/ExtraLife.java",
+    "PA22/Move.java",
+    "PA22/GameMap.java",
+    "PA22/TerminalInputEngine.java",
+    "PA22/TerminalSokobanGame.java",
+    "PA22/TerminalRenderingEngine.java"
+  ]
+}

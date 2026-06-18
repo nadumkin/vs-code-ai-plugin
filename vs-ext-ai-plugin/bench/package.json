@@ -1,0 +1,19 @@
+{
+  "name": "ai-agent-bench",
+  "version": "0.0.1",
+  "private": true,
+  "description": "Headless ablation harness for the AI Agent Assistant on JavaBench.",
+  "type": "commonjs",
+  "scripts": {
+    "smoke": "node smoke.js",
+    "run": "node run-ablation.js",
+    "report": "node report.js",
+    "report:docx": "node report-docx.js"
+  },
+  "dependencies": {
+    "fast-glob": "^3.3.2"
+  },
+  "devDependencies": {
+    "docx": "^9.7.0"
+  }
+}

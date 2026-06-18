@@ -1,0 +1,37 @@
+# В VSIX-пакет должны попасть только: package.json, README.md, src/, media/, resources/.
+# Всё перечисленное ниже из пакета исключается.
+
+# VCS и служебные каталоги
+.git/**
+.gitignore
+.vscode/**
+.claude/**
+.DS_Store
+**/.DS_Store
+
+# Бенчмарк-харнесс: клон JavaBench (~400 МБ), node_modules, python-venv,
+# результаты прогонов — в рантайме расширения не используется
+bench/**
+
+# Документация и отчёты (README.md остаётся — это страница расширения)
+docs/**
+JOBS.md
+Results.md
+**/*.docx
+
+# Конфигурация разработки
+jsconfig.json
+
+# Артефакты работы плагина, если упаковка идёт из рабочей папки,
+# где расширение уже запускалось (память QKV и JSONL-логи)
+.aiAgentAssistant/**
+**/.aiAgentAssistant/**
+
+# Страховка от мусора инструментов (runtime-зависимостей у расширения нет)
+**/node_modules/**
+package-lock.json
+**/.venv/**
+**/__pycache__/**
+**/*.pyc
+*.vsix
+logs/**
