@@ -1,0 +1,86 @@
+x-common-env: &common-env
+  DATABASE_URL: postgresql+asyncpg://aiplugin:aiplugin@postgres:5432/aiplugin
+  RABBIT_URL: amqp://guest:guest@rabbitmq:5672/
+
+services:
+  postgres:
+    image: postgres:16
+    environment:
+      POSTGRES_DB: aiplugin
+      POSTGRES_USER: aiplugin
+      POSTGRES_PASSWORD: aiplugin
+    ports:
+      - "5432:5432"
+    volumes:
+      - pgdata:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U aiplugin -d aiplugin"]
+      interval: 5s
+      timeout: 5s
+      retries: 12
+
+  rabbitmq:
+    image: rabbitmq:3-management
+    ports:
+      - "5672:5672"
+      - "15672:15672" # management UI (guest/guest)
+    healthcheck:
+      test: ["CMD", "rabbitmq-diagnostics", "-q", "ping"]
+      interval: 10s
+      timeout: 5s
+      retries: 12
+
+  proxy:
+    build:
+      context: .
+      dockerfile: proxy_service/Dockerfile
+    environment:
+      <<: *common-env
+      TOKENS_FILE: /app/tokens.json
+    ports:
+      - "8000:8000"
+    volumes:
+      - ./tokens.json:/app/tokens.json:ro
+    depends_on:
+      postgres:
+        condition: service_healthy
+      rabbitmq:
+        condition: service_healthy
+
+  request:
+    build:
+      context: .
+      dockerfile: request_service/Dockerfile
+    environment:
+      <<: *common-env
+      TOKENS_FILE: /app/tokens.json
+    ports:
+      - "8090:8081" # host 8090 -> container 8081 (8081 may be taken on the host)
+    volumes:
+      - ./tokens.json:/app/tokens.json:ro
+    depends_on:
+      postgres:
+        condition: service_healthy
+      rabbitmq:
+        condition: service_healthy
+
+  llm:
+    build:
+      context: .
+      dockerfile: llm_service/Dockerfile
+      args:
+        INSTALL_HF: "false"
+    environment:
+      <<: *common-env
+      MODELS_FILE: /app/models.json
+      OPENROUTER_KEY: ${OPENROUTER_KEY:-}
+    volumes:
+      - ./models.json:/app/models.json:ro
+    depends_on:
+      postgres:
+        condition: service_healthy
+      rabbitmq:
+        condition: service_healthy
+
+volumes:
+  pgdata:

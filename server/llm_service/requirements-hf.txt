@@ -1,0 +1,5 @@
+# Optional: only installed when building with --build-arg INSTALL_HF=true.
+# Enables the hf_local adapter (large download, CPU/GPU heavy).
+transformers==4.47.1
+torch==2.5.1
+accelerate==1.2.1

@@ -1,0 +1,24 @@
+# GPU override for the LLM Service. Use ALONGSIDE the base compose file on an
+# NVIDIA host (Linux + nvidia-container-toolkit):
+#
+#   docker compose -f docker-compose.yml -f docker-compose.cuda.yml up --build -d
+#
+# It swaps the LLM image for the CUDA build, reserves the GPU, and adds a
+# persistent HuggingFace cache so model weights are downloaded only once.
+# NOTE: has no effect on Docker Desktop for Mac (no GPU passthrough).
+services:
+  llm:
+    build:
+      dockerfile: llm_service/Dockerfile.cuda
+    deploy:
+      resources:
+        reservations:
+          devices:
+            - driver: nvidia
+              count: all
+              capabilities: [gpu]
+    volumes:
+      - hf_cache:/root/.cache/huggingface
+
+volumes:
+  hf_cache:
