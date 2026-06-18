@@ -2,6 +2,11 @@ const { RequestClassifier } = require("./RequestClassifier");
 const { sanitizeAssistantText } = require("../util/DisplaySanitizer");
 const { NullLogger } = require("../util/Logger");
 
+// A plain code-block answer (no tool call) may be applied as a file edit for any
+// request EXCEPT a pure explanation/question — covers weak models that can't reliably
+// emit tool calls, while not clobbering files when the user only asked a question.
+const NON_EDIT_INTENTS = new Set(["explain", "question"]);
+
 class AgentRuntime {
   constructor({ contextCollector, openRouterClient, toolExecutor, outputChannel, logger }) {
     this.contextCollector = contextCollector;
@@ -22,6 +27,24 @@ class AgentRuntime {
 
   async rejectPendingChanges() {
     return this.toolExecutor.rejectPendingChanges();
+  }
+
+  buildFileChangeFromText(text) {
+    if (!this.toolExecutor.hasActiveEditor()) {
+      return null;
+    }
+    const code = extractFencedCode(text);
+    if (!code) {
+      return null;
+    }
+    return {
+      id: `fallback-replace-${Date.now()}`,
+      type: "function",
+      function: {
+        name: "replace_active_file",
+        arguments: JSON.stringify({ content: code }),
+      },
+    };
   }
 
   async runTurn({
@@ -69,6 +92,8 @@ class AgentRuntime {
 
     const tools = this.toolExecutor.getToolDefinitions();
     const maxIterations = normalizeIterationLimit(iterationLimit);
+    const allowCodeBlockApply =
+      Boolean(classification) && !NON_EDIT_INTENTS.has(classification.type);
 
     for (let iteration = 0; iteration < maxIterations; iteration += 1) {
       onStatus?.(
@@ -88,8 +113,27 @@ class AgentRuntime {
       }
 
       const assistantMessage = normalizeAssistantMessage(choice.message);
+      let toolCalls = assistantMessage.tool_calls || [];
+
+      // Fallback for models that return code as a fenced block instead of calling a
+      // tool (e.g. small local models): turn it into a replace_active_file edit so it
+      // still goes through the diff/approval flow. Edit-intent requests only.
+      if (toolCalls.length === 0 && allowCodeBlockApply) {
+        const fallbackCall = this.buildFileChangeFromText(
+          extractText(assistantMessage.content)
+        );
+        if (fallbackCall) {
+          toolCalls = [fallbackCall];
+          assistantMessage.tool_calls = toolCalls;
+          assistantMessage.content = "";
+          onToolEvent?.({
+            summary:
+              "Модель вернула код без вызова инструмента — оформляю как замену активного файла.",
+          });
+        }
+      }
+
       messages.push(assistantMessage);
-      const toolCalls = assistantMessage.tool_calls || [];
 
       this.logger.append("assistant_message", {
         iteration,
@@ -239,6 +283,23 @@ function extractText(content) {
   }
 
   return "";
+}
+
+function extractFencedCode(text) {
+  if (typeof text !== "string" || !text.includes("```")) {
+    return null;
+  }
+  // Pick the largest fenced block — for a refactor that's the full file content.
+  const re = /```[a-zA-Z0-9_+#.-]*[ \t]*\r?\n?([\s\S]*?)```/g;
+  let match;
+  let best = "";
+  while ((match = re.exec(text)) !== null) {
+    const body = (match[1] || "").trim();
+    if (body.length > best.length) {
+      best = body;
+    }
+  }
+  return best.length > 0 ? best : null;
 }
 
 module.exports = {

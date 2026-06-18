@@ -69,13 +69,14 @@ services:
       context: .
       dockerfile: llm_service/Dockerfile
       args:
-        INSTALL_HF: "false"
+        INSTALL_HF: "true" # bake torch+transformers so the small local model runs on CPU
     environment:
       <<: *common-env
       MODELS_FILE: /app/models.json
       OPENROUTER_KEY: ${OPENROUTER_KEY:-}
     volumes:
       - ./models.json:/app/models.json:ro
+      - hf_cache:/root/.cache/huggingface
     depends_on:
       postgres:
         condition: service_healthy
@@ -84,3 +85,4 @@ services:
 
 volumes:
   pgdata:
+  hf_cache:

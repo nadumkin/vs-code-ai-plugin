@@ -76,7 +76,7 @@ docker compose exec postgres psql -U aiplugin -d aiplugin \
   "models": [
     { "id": "mock/echo", "adapter": "echo" },
     { "id": "openai/gpt-5.2", "adapter": "openrouter", "params": { "upstream_model": "openai/gpt-5.2" } },
-    { "id": "qwen/qwen1.5-moe-a2.7b-chat", "adapter": "hf_local", "params": { "model_path": "Qwen/Qwen1.5-MoE-A2.7B-Chat", "max_new_tokens": 256 } }
+    { "id": "qwen/qwen2.5-coder-0.5b", "adapter": "hf_local", "params": { "model_path": "Qwen/Qwen2.5-Coder-0.5B-Instruct", "max_new_tokens": 256 } }
   ]
 }
 ```
@@ -84,8 +84,9 @@ docker compose exec postgres psql -U aiplugin -d aiplugin \
 Адаптеры (`llm_service/adapters/`):
 - **echo** — офлайн-заглушка, ничего не требует;
 - **openrouter** — форвардит запрос в OpenAI-совместимый API (`OPENROUTER_KEY`), tool-calling работает нативно;
-- **hf_local** — локальная HuggingFace-модель. Требует `torch` (есть только в CUDA-образе, см. ниже);
-  если torch недоступен, реестр **пропускает** такие модели — они не попадают в список.
+- **hf_local** — локальная HuggingFace-модель. `torch`+`transformers` встроены в образ LLM (`INSTALL_HF=true`),
+  устройство определяется авто (CUDA→MPS→CPU). По умолчанию поднята небольшая `qwen/qwen2.5-coder-0.5b`
+  (Qwen2.5-Coder-0.5B-Instruct, ~1 ГБ) — работает и на CPU. Если torch недоступен — модель тихо пропускается.
 
 Несколько записей могут указывать на один адаптер с разными `params` — так сервис «поднимает несколько моделей».
 
@@ -98,21 +99,31 @@ curl http://localhost:8000/v1/models
 # {"models":[{"id":"mock/echo","adapter":"echo","default":true}, ...]}
 ```
 
-### Локальная Qwen MoE на CUDA
-Модель `qwen/qwen1.5-moe-a2.7b-chat` (Qwen1.5-MoE-A2.7B-Chat, 14.3B весов / 2.7B активных) идёт через
-`hf_local` и запускается только на **NVIDIA-хосте** (Linux + nvidia-container-toolkit):
+### Небольшая локальная модель на CPU
+`qwen/qwen2.5-coder-0.5b` поднимается прямо в базовом стеке (CPU) — `torch` уже в образе LLM. Веса (~1 ГБ)
+скачиваются один раз в том `hf_cache` при первом запросе и дальше берутся из кэша. Первый ответ дольше
+(загрузка модели + инференс на CPU), последующие быстрее. Выберите модель в плагине или укажите в запросе:
+
+```bash
+curl http://localhost:8000/v1/models     # есть qwen/qwen2.5-coder-0.5b (adapter hf_local)
+python test_client.py --model qwen/qwen2.5-coder-0.5b --prompt "Write a Python function fib(n)."
+```
+
+### Qwen MoE на CUDA (GPU-хост)
+Тяжёлая `qwen/qwen1.5-moe-a2.7b-chat` (14.3B весов / 2.7B активных) вынесена в `models.cuda.json` и
+поднимается только на **NVIDIA-хосте** (Linux + nvidia-container-toolkit) через override:
 
 ```bash
 docker compose -f docker-compose.yml -f docker-compose.cuda.yml up --build -d
-curl http://localhost:8000/v1/models                 # появится qwen/qwen1.5-moe-a2.7b-chat (hf_local)
+curl http://localhost:8000/v1/models                 # появится qwen/qwen1.5-moe-a2.7b-chat
 docker logs server-llm-1 | grep "device auto-check"  # device: cuda
 ```
 
-Устройство определяется автоматически при старте (CUDA→MPS→CPU) и логируется («device auto-check»),
-видно и в `GET /health`. Веса (~28 ГБ fp16) скачиваются один раз в том `hf_cache` при первом запросе.
+Устройство определяется авто при старте (CUDA→MPS→CPU), логируется («device auto-check») и видно в `GET /health`.
+Веса MoE (~28 ГБ fp16) кэшируются в `hf_cache`.
 
-> На Docker Desktop для Mac GPU недоступен (нет проброса Metal/CUDA): базовый стек работает на CPU
-> с `mock/echo`/`openrouter`, а CUDA+MoE запускайте на отдельной GPU-машине.
+> На Docker Desktop для Mac GPU недоступен: на CPU держите `mock/echo` или небольшую `qwen2.5-coder-0.5b`,
+> а MoE запускайте на отдельной GPU-машине.
 
 ## Подключение плагина
 
@@ -129,8 +140,9 @@ docker logs server-llm-1 | grep "device auto-check"  # device: cuda
 Модель выбирается из выпадающего списка: в **AI Agent: Open Settings** нажмите «Загрузить модели»
 (запрос к Proxy `GET /v1/models`), выберите модель и сохраните.
 
-Токен доступа сохраняется как и раньше — через **AI Agent: Open Settings** (поле API key);
+Токен доступа сохраняется через **AI Agent: Open Settings** → поле **«Ключ доступа (Proxy Service)»**;
 он отправляется в `Authorization: Bearer <token>` на Proxy и в `?token=` на WebSocket.
+Ключ OpenRouter в плагине не задаётся — только на сервере (`OPENROUTER_KEY`).
 Значение должно совпадать с одним из токенов в `tokens.json` (например `dev-secret-token-123`).
 
 > Плагину нужен npm-пакет `ws`: в каталоге `vs-ext-ai-plugin/` выполните `npm install`.

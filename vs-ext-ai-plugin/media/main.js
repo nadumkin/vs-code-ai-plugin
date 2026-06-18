@@ -177,11 +177,11 @@
     elements.settingsClearApiKey.checked = false;
     elements.settingsClearApiKeyRow.hidden = !state.hasStoredApiKey;
     elements.settingsApiKey.placeholder = state.hasStoredApiKey
-      ? "Сохранен текущий ключ"
-      : "Необязателен для локальных endpoint";
+      ? "Ключ сохранён"
+      : "Токен из tokens.json на сервере";
     elements.settingsApiKeyHint.textContent = state.hasStoredApiKey
       ? "Поле можно оставить пустым, чтобы сохранить текущий ключ."
-      : "Если ваш endpoint требует Bearer token, введите ключ здесь.";
+      : "Ключ для доступа к Proxy Service (сверяется с tokens.json). Ключ OpenRouter задаётся на сервере (OPENROUTER_KEY).";
   }
 
   function populateModelSelect() {
@@ -245,7 +245,7 @@
     const autoApplyChanges = Boolean(elements.settingsAutoApplyChanges.checked);
 
     if (!baseUrl) {
-      elements.settingsBaseUrl.setCustomValidity("Endpoint обязателен.");
+      elements.settingsBaseUrl.setCustomValidity("Proxy Service URL обязателен.");
       elements.settingsBaseUrl.reportValidity();
       elements.settingsBaseUrl.focus();
       return;

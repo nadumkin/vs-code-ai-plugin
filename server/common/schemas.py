@@ -22,19 +22,20 @@ class ChatRequest(BaseModel):
     stream: bool = False
 
 
-def build_text_completion(
+def build_completion(
     model: str,
-    text: str,
     *,
+    content: Optional[str] = None,
+    tool_calls: Optional[list[dict[str, Any]]] = None,
     request_id: Optional[str] = None,
 ) -> dict[str, Any]:
-    """Wrap plain assistant text into an OpenAI chat.completion dict.
+    """Build an OpenAI chat.completion dict (the uniform adapter output).
 
-    This is the *uniform output* contract for adapters that don't already speak
-    the OpenAI wire format (echo, local HF). The plugin reads
-    ``choices[0].message`` exactly as before.
+    The plugin reads ``choices[0].message`` exactly as for a real provider:
+    ``content`` for text, ``tool_calls`` to drive file edits / commands.
     """
 
+    calls = tool_calls or []
     completion_id = f"chatcmpl-{request_id or uuid.uuid4().hex}"
     return {
         "id": completion_id,
@@ -46,11 +47,21 @@ def build_text_completion(
                 "index": 0,
                 "message": {
                     "role": "assistant",
-                    "content": text,
-                    "tool_calls": [],
+                    "content": content if content is not None else "",
+                    "tool_calls": calls,
                 },
-                "finish_reason": "stop",
+                "finish_reason": "tool_calls" if calls else "stop",
             }
         ],
         "usage": {"prompt_tokens": 0, "completion_tokens": 0, "total_tokens": 0},
     }
+
+
+def build_text_completion(
+    model: str,
+    text: str,
+    *,
+    request_id: Optional[str] = None,
+) -> dict[str, Any]:
+    """Wrap plain assistant text into an OpenAI chat.completion dict."""
+    return build_completion(model, content=text, request_id=request_id)

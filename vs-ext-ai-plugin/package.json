@@ -90,13 +90,13 @@
       "properties": {
         "aiAgentAssistant.openRouter.model": {
           "type": "string",
-          "default": "openai/gpt-5.2",
-          "description": "LLM model identifier used for agent responses."
+          "default": "mock/echo",
+          "description": "Model id sent to the backend. Use the settings dropdown («Загрузить модели») to pick one available on the server (e.g. mock/echo, qwen/qwen2.5-coder-0.5b, openai/gpt-5.2)."
         },
         "aiAgentAssistant.openRouter.baseUrl": {
           "type": "string",
           "default": "https://openrouter.ai/api/v1/chat/completions",
-          "description": "Full chat/completions endpoint URL for OpenRouter or another compatible provider."
+          "description": "Deprecated / unused. The plugin talks to the Proxy Service — see aiAgentAssistant.backend.httpUrl. The OpenRouter key is configured server-side (OPENROUTER_KEY)."
         },
         "aiAgentAssistant.openRouter.requestTimeoutMs": {
           "type": "number",
@@ -113,6 +113,12 @@
           "type": "string",
           "default": "ws://localhost:8090",
           "description": "Request Service WebSocket base URL. The plugin connects to {wsUrl}/ws/{requestId}?token=... to receive the model response."
+        },
+        "aiAgentAssistant.backend.responseTimeoutMs": {
+          "type": "number",
+          "default": 600000,
+          "minimum": 1000,
+          "description": "How long to wait for the model response over WebSocket before failing. Local models on CPU can be slow, so keep this generous (separate from the HTTP requestTimeoutMs)."
         },
         "aiAgentAssistant.context.maxImportedFiles": {
           "type": "number",
@@ -137,6 +143,11 @@
           "default": 8,
           "minimum": 1,
           "description": "Default maximum number of agent iterations before pause/continue is offered."
+        },
+        "aiAgentAssistant.agent.useTools": {
+          "type": "boolean",
+          "default": true,
+          "description": "Send tool definitions to the model (agentic file edits, workspace search, commands). Turn OFF for weak local models that can't reliably emit tool calls — they then return the edited file as a code block, applied via diff approval for edit requests (refactor/fix/write/test)."
         },
         "aiAgentAssistant.execution.requireConfirmation": {
           "type": "boolean",

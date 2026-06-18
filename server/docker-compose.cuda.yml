@@ -10,6 +10,8 @@ services:
   llm:
     build:
       dockerfile: llm_service/Dockerfile.cuda
+    environment:
+      MODELS_FILE: /app/models.cuda.json # adds the heavy Qwen MoE on top of the small model
     deploy:
       resources:
         reservations:
@@ -18,6 +20,7 @@ services:
               count: all
               capabilities: [gpu]
     volumes:
+      - ./models.cuda.json:/app/models.cuda.json:ro
       - hf_cache:/root/.cache/huggingface
 
 volumes:

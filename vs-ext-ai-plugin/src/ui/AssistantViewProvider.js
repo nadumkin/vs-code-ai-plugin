@@ -583,7 +583,7 @@ class AssistantViewProvider {
     const nonce = getNonce();
     const modelText = escapeHtml(this.modelName);
     const endpointText = escapeHtml(formatEndpointLabel(this.baseUrl));
-    const apiKeyText = this.hasStoredApiKey ? "API key сохранен" : "API key не задан";
+    const apiKeyText = this.hasStoredApiKey ? "Ключ доступа сохранён" : "Ключ доступа не задан";
     const autoApplyChecked = this.autoApplyChanges ? "checked" : "";
 
     return `<!DOCTYPE html>
@@ -604,7 +604,7 @@ class AssistantViewProvider {
         <div>
           <p class="eyebrow">AI Agent Assistant</p>
           <h1>Контекстный кодовый агент</h1>
-          <p class="subtitle">Совместимый chat/completions endpoint + файлы + тесты + действия над проектом</p>
+          <p class="subtitle">Бэкенд (Proxy + LLM) + файлы + тесты + действия над проектом</p>
           <div class="hero-meta">
             <div id="currentModel" class="meta-chip">${modelText}</div>
             <div id="currentEndpoint" class="meta-chip meta-chip-secondary">${endpointText}</div>
@@ -656,22 +656,22 @@ class AssistantViewProvider {
           <div>
             <p class="settings-kicker">Настройки</p>
             <h2 id="settingsTitle">Подключение и поведение агента</h2>
-            <p class="settings-subtitle">Поддерживаются OpenRouter и другие совместимые chat/completions endpoint.</p>
+            <p class="settings-subtitle">Подключение к серверу (Proxy Service) и поведение агента. Ключ OpenRouter задаётся на сервере.</p>
           </div>
           <button id="closeSettings" type="button" class="icon-button" aria-label="Закрыть настройки">×</button>
         </div>
 
         <div class="settings-grid">
           <label class="settings-field settings-field-full">
-            <span class="settings-label">Endpoint</span>
+            <span class="settings-label">Proxy Service URL</span>
             <input
               id="settingsBaseUrl"
               class="settings-input"
               type="url"
               value="${escapeAttribute(this.baseUrl)}"
-              placeholder="https://openrouter.ai/api/v1/chat/completions"
+              placeholder="http://localhost:8000"
             />
-            <span class="settings-note">Полный URL совместимого endpoint формата chat/completions.</span>
+            <span class="settings-note">Адрес Proxy Service. WebSocket-адрес задаётся в settings.json (aiAgentAssistant.backend.wsUrl).</span>
           </label>
 
           <label class="settings-field">
@@ -696,24 +696,24 @@ class AssistantViewProvider {
           </label>
 
           <label class="settings-field settings-field-full">
-            <span class="settings-label">API key</span>
+            <span class="settings-label">Ключ доступа (Proxy Service)</span>
             <input
               id="settingsApiKey"
               class="settings-input"
               type="password"
               value=""
-              placeholder="${this.hasStoredApiKey ? "Сохранен текущий ключ" : "Необязателен для локальных endpoint"}"
+              placeholder="${this.hasStoredApiKey ? "Ключ сохранён" : "Токен из tokens.json на сервере"}"
             />
             <span id="settingsApiKeyHint" class="settings-note">${
               this.hasStoredApiKey
                 ? "Поле можно оставить пустым, чтобы сохранить текущий ключ."
-                : "Если ваш endpoint требует Bearer token, введите ключ здесь."
+                : "Ключ для доступа к Proxy Service (сверяется с tokens.json на сервере). Ключ OpenRouter задаётся на сервере (OPENROUTER_KEY)."
             }</span>
             <label id="settingsClearApiKeyRow" class="settings-inline-toggle" ${
               this.hasStoredApiKey ? "" : "hidden"
             }>
               <input id="settingsClearApiKey" type="checkbox" />
-              <span>Удалить сохраненный API key</span>
+              <span>Удалить сохранённый ключ</span>
             </label>
           </label>
 

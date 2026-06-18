@@ -41,13 +41,12 @@ class OpenRouterClient {
   getConfiguredModel() {
     return vscode.workspace
       .getConfiguration("aiAgentAssistant")
-      .get("openRouter.model", "openai/gpt-5.2");
+      .get("openRouter.model", "mock/echo");
   }
 
   getConfiguredBaseUrl() {
-    return vscode.workspace
-      .getConfiguration("aiAgentAssistant")
-      .get("openRouter.baseUrl", "https://openrouter.ai/api/v1/chat/completions");
+    // The plugin talks to the Proxy Service; expose its URL for display/settings.
+    return this.getBackendHttpUrl();
   }
 
   getBackendHttpUrl() {
@@ -130,7 +129,7 @@ class OpenRouterClient {
 
     await vscode.workspace
       .getConfiguration("aiAgentAssistant")
-      .update("openRouter.baseUrl", normalizedBaseUrl, target);
+      .update("backend.httpUrl", normalizedBaseUrl, target);
 
     if (clearApiKey) {
       await this.clearApiKey();
@@ -176,6 +175,7 @@ class OpenRouterClient {
     const httpUrl = this.getBackendHttpUrl().replace(/\/+$/, "");
     const wsUrl = this.getBackendWsUrl().replace(/\/+$/, "");
     const timeoutMs = Number(config.get("openRouter.requestTimeoutMs", 120000));
+    const responseTimeoutMs = Number(config.get("backend.responseTimeoutMs", 600000));
 
     const requestBody = {
       model,
@@ -202,7 +202,8 @@ class OpenRouterClient {
       this.logger.append("request_submitted", { requestId, httpUrl, model });
 
       // 2) Request Service: open a WebSocket keyed by requestId, await the completion.
-      const payload = await this.awaitResponse(wsUrl, requestId, token, timeoutMs);
+      // Uses a separate, generous timeout — local models on CPU can take minutes.
+      const payload = await this.awaitResponse(wsUrl, requestId, token, responseTimeoutMs);
       if (!payload) {
         throw new Error("Request Service вернул пустой ответ.");
       }

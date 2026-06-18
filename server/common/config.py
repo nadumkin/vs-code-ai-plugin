@@ -31,8 +31,9 @@ class Settings(BaseSettings):
     request_queue: str = "requests"
     response_queue: str = "responses"
 
-    # How long the Request Service WebSocket waits for a response before erroring out
-    ws_response_timeout: float = 180.0
+    # How long the Request Service WebSocket waits for a response before erroring out.
+    # Generous so slow local (CPU) model inference isn't cut off.
+    ws_response_timeout: float = 600.0
 
 
 @lru_cache

@@ -55,7 +55,22 @@ class ToolExecutor {
     this.decoder = new TextDecoder("utf-8");
   }
 
+  getUseToolsEnabled() {
+    return Boolean(
+      vscode.workspace
+        .getConfiguration("aiAgentAssistant")
+        .get("agent.useTools", true)
+    );
+  }
+
   getToolDefinitions() {
+    // Weak local models can't drive the multi-step tool loop reliably (they loop,
+    // hallucinate tools, emit malformed calls). Turning tools off makes them return
+    // the edited file as a code block, which AgentRuntime's edit-intent fallback then
+    // applies via the diff/approval flow.
+    if (!this.getUseToolsEnabled()) {
+      return [];
+    }
     return [
       toolDefinition(
         "read_file",
@@ -132,6 +147,10 @@ class ToolExecutor {
 
   isDeferredFileChangeTool(name) {
     return name === "write_file" || name === "replace_active_file";
+  }
+
+  hasActiveEditor() {
+    return Boolean(vscode.window.activeTextEditor);
   }
 
   getPendingApprovalSummary() {

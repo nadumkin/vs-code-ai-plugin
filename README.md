@@ -71,10 +71,11 @@ flowchart LR
 |---|---|---|
 | `echo` | эхо последнего сообщения (офлайн-демо) | ничего |
 | `openrouter` | форвардит запрос в OpenAI-совместимый API; tool-calling нативный | `OPENROUTER_KEY` |
-| `hf_local` | локальная HuggingFace-модель (Qwen MoE), устройство — авто (CUDA→MPS→CPU) | `torch` (только CUDA-образ) |
+| `hf_local` | локальная HuggingFace-модель, устройство — авто (CUDA→MPS→CPU); на CPU поднята `qwen2.5-coder-0.5b`, на CUDA — Qwen MoE | `torch`+`transformers` (в образе LLM) |
 
-Если зависимость адаптера недоступна (например `torch` в обычном CPU-образе) — модель **тихо пропускается**
-реестром и не появляется в `/v1/models`.
+`torch`+`transformers` встроены в образ LLM, поэтому небольшая `qwen/qwen2.5-coder-0.5b` работает и на CPU
+(веса ~1 ГБ скачиваются один раз в том `hf_cache`). Если зависимость адаптера недоступна — модель
+**тихо пропускается** реестром и не появляется в `/v1/models`.
 
 ---
 
@@ -109,7 +110,7 @@ vs-code-ai-plugin/
 ```
 
 Стек сервера: FastAPI + uvicorn, aio-pika (RabbitMQ), SQLAlchemy[asyncio] + asyncpg (Postgres),
-pydantic / pydantic-settings, httpx; опц. transformers/torch (CUDA-образ).
+pydantic / pydantic-settings, httpx; transformers + torch (в образе LLM, для локальных моделей).
 
 ---
 
@@ -117,8 +118,9 @@ pydantic / pydantic-settings, httpx; опц. transformers/torch (CUDA-образ
 
 ✅ Проверено локально (CPU-стек): полный пайплайн (connect-before и connect-after), проверка токена
 (`401` / WS reject), логи в БД (`queued→processing→done`), `GET /v1/models`, `listModels()` из плагина,
-автоопределение устройства (приоритет CUDA→MPS→CPU), авто-пропуск MoE без torch, валидность CUDA-compose.
+автоопределение устройства (CUDA→MPS→CPU). **Локальная `qwen/qwen2.5-coder-0.5b` реально запущена на CPU**
+и отвечает через полный пайплайн (HTTP → очередь → инференс → WS).
 
 ⚠️ **CUDA + Qwen MoE** реализованы и провалидированы конфигом, но **запускаются только на NVIDIA-хосте**:
-у Docker Desktop на Mac нет проброса GPU, а MPS недоступен внутри Linux-контейнера. На Mac базовый стек
-работает на CPU с `mock/echo` (и `openrouter` при наличии ключа); тяжёлую MoE поднимайте на GPU-машине.
+у Docker Desktop на Mac нет проброса GPU, а MPS недоступен внутри Linux-контейнера. На Mac используйте
+`mock/echo`, небольшую `qwen2.5-coder-0.5b` или `openrouter`; тяжёлую MoE поднимайте на GPU-машине.
