@@ -1,7 +1,9 @@
-"""Adapter that forwards the request to an OpenAI-compatible API (OpenRouter).
+"""Adapter that forwards the request to any OpenAI-compatible /chat/completions API.
 
-Because the input is already the OpenAI wire format, tool-calling works
-natively and the upstream response is returned unchanged.
+Works with OpenRouter as well as self-hosted servers on another machine (Ollama,
+vLLM, LM Studio, text-generation-inference): set ``base_url`` to that endpoint and
+``api_key`` only if it requires auth. The input is already the OpenAI wire format,
+so tool-calling works natively and the upstream response is returned unchanged.
 """
 
 from typing import Any
@@ -28,20 +30,18 @@ class OpenRouterAdapter(BaseModelAdapter):
         self._timeout = float(params.get("timeout", 120.0))
 
     async def generate(self, request: ChatRequest) -> dict[str, Any]:
-        if not self._api_key:
-            raise RuntimeError(
-                "OPENROUTER_KEY is not configured; cannot use the openrouter adapter"
-            )
-
         body = request.model_dump(exclude_none=True)
         if self._upstream_model:
             body["model"] = self._upstream_model
 
         headers = {
-            "Authorization": f"Bearer {self._api_key}",
             "Content-Type": "application/json",
             "X-Title": "VS Code AI Agent Assistant",
         }
+        # Send auth only when a key is configured. Self-hosted servers (Ollama,
+        # vLLM, LM Studio) usually need none; OpenRouter returns 401 if it's missing.
+        if self._api_key:
+            headers["Authorization"] = f"Bearer {self._api_key}"
 
         async with httpx.AsyncClient(timeout=self._timeout) as client:
             response = await client.post(self._base_url, headers=headers, json=body)

@@ -17,6 +17,14 @@
       }
     },
     {
+      "id": "qwen/qwen2.5-coder-7b",
+      "adapter": "hf_local",
+      "params": {
+        "model_path": "Qwen/Qwen2.5-Coder-7B-Instruct",
+        "max_new_tokens": 1024
+      }
+    },
+    {
       "id": "qwen/qwen1.5-moe-a2.7b-chat",
       "adapter": "hf_local",
       "params": {

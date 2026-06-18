@@ -52,12 +52,18 @@ class HFLocalAdapter(BaseModelAdapter):
         from transformers import AutoModelForCausalLM, AutoTokenizer
 
         self._tokenizer = AutoTokenizer.from_pretrained(self._model_path)
-        model = AutoModelForCausalLM.from_pretrained(
-            self._model_path, torch_dtype=self._dtype
-        )
-        model.to(self._device)
-        model.eval()
-        self._model = model
+        if self._device == "cuda":
+            # Let accelerate place / shard / offload large models across the GPU(s).
+            self._model = AutoModelForCausalLM.from_pretrained(
+                self._model_path, torch_dtype=self._dtype, device_map="auto"
+            )
+        else:
+            model = AutoModelForCausalLM.from_pretrained(
+                self._model_path, torch_dtype=self._dtype
+            )
+            model.to(self._device)
+            self._model = model
+        self._model.eval()
 
     def _build_inputs(self, request: ChatRequest):
         """Render the prompt, advertising tools to the model when present."""

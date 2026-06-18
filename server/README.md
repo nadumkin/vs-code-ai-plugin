@@ -109,21 +109,41 @@ curl http://localhost:8000/v1/models     # есть qwen/qwen2.5-coder-0.5b (ada
 python test_client.py --model qwen/qwen2.5-coder-0.5b --prompt "Write a Python function fib(n)."
 ```
 
-### Qwen MoE на CUDA (GPU-хост)
-Тяжёлая `qwen/qwen1.5-moe-a2.7b-chat` (14.3B весов / 2.7B активных) вынесена в `models.cuda.json` и
-поднимается только на **NVIDIA-хосте** (Linux + nvidia-container-toolkit) через override:
+### Весь стек на машине с CUDA (крупная модель)
+Чтобы гонять модель крупнее — склонируйте репозиторий на **Linux-хост с NVIDIA GPU** и установленным
+nvidia-container-toolkit, и поднимите стек с CUDA-override:
 
 ```bash
+git clone <repo> && cd <repo>/server
 docker compose -f docker-compose.yml -f docker-compose.cuda.yml up --build -d
-curl http://localhost:8000/v1/models                 # появится qwen/qwen1.5-moe-a2.7b-chat
-docker logs server-llm-1 | grep "device auto-check"  # device: cuda
+docker logs server-llm-1 | grep "device auto-check"   # device: cuda (+ имя GPU)
+curl http://localhost:8000/v1/models                   # список моделей
 ```
 
-Устройство определяется авто при старте (CUDA→MPS→CPU), логируется («device auto-check») и видно в `GET /health`.
-Веса MoE (~28 ГБ fp16) кэшируются в `hf_cache`.
+CUDA-override (`docker-compose.cuda.yml`) подменяет образ LLM на `Dockerfile.cuda` (torch+CUDA),
+резервирует GPU, монтирует `models.cuda.json` и том `hf_cache`. `hf_local` грузит модель на GPU через
+accelerate (`device_map="auto"`, fp16); у крупных моделей tool-calling работает нативно (полный агент,
+правки файлов через инструменты — `useTools: true`).
 
-> На Docker Desktop для Mac GPU недоступен: на CPU держите `mock/echo` или небольшую `qwen2.5-coder-0.5b`,
-> а MoE запускайте на отдельной GPU-машине.
+**Выбор модели** — правьте `server/models.cuda.json` (`model_path` = любой HF-репозиторий):
+
+| Модель | VRAM (fp16) | GPU |
+|---|---|---|
+| `Qwen/Qwen2.5-Coder-7B-Instruct` (готово: `qwen/qwen2.5-coder-7b`) | ~16 ГБ | 16–24 ГБ (3090/4090, A4000+) |
+| `Qwen/Qwen2.5-Coder-14B-Instruct` | ~28 ГБ | 24–32 ГБ |
+| `Qwen/Qwen2.5-Coder-32B-Instruct` | ~64 ГБ / квантизация | A100 80G или 4-bit |
+| `Qwen/Qwen1.5-MoE-A2.7B-Chat` (готово: `qwen/qwen1.5-moe-a2.7b-chat`) | ~28 ГБ, быстрая (2.7B активных) | 24–32 ГБ |
+
+Веса качаются один раз в `hf_cache`. Устройство логируется при старте («device auto-check») и в `GET /health`.
+
+**Плагин:**
+- VS Code на той же машине → адреса по умолчанию (`http://localhost:8000`, `ws://localhost:8090`);
+- плагин на другом компьютере → в настройках укажите IP CUDA-хоста:
+  `aiAgentAssistant.backend.httpUrl = http://<CUDA_IP>:8000`, `…backend.wsUrl = ws://<CUDA_IP>:8090`
+  (порты 8000/8090 публикуются в compose; откройте их в фаерволе хоста).
+
+> На Docker Desktop для Mac GPU недоступен — там только CPU (`mock/echo` / `qwen2.5-coder-0.5b`).
+> Крупные модели запускайте на отдельной CUDA-машине по инструкции выше.
 
 ## Подключение плагина
 
