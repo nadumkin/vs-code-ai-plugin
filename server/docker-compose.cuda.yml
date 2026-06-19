@@ -7,6 +7,32 @@
 # persistent HuggingFace cache so model weights are downloaded only once.
 # NOTE: has no effect on Docker Desktop for Mac (no GPU passthrough).
 services:
+  # llama.cpp server running the Qwen MoE with experts offloaded to CPU RAM
+  # (--cpu-moe) so a ~14B-param MoE fits on an 8 GB GPU: attention/context stay
+  # on the GPU, expert weights live in system RAM. Exposes an OpenAI-compatible
+  # API that the llm service's llama_server adapter calls. See
+  # https://habr.com/ru/articles/961478/.
+  # The GGUF weights are pulled from HuggingFace on first start into llama_cache
+  # (override the repo/quant via the -hf tag if you want a different size).
+  llamacpp:
+    image: ghcr.io/ggml-org/llama.cpp:server-cuda
+    command: >
+      -hf RichardErkhov/Qwen_-_Qwen1.5-MoE-A2.7B-Chat-gguf:Q4_K_M
+      --host 0.0.0.0 --port 8080
+      -ngl 99 --cpu-moe
+      -fa 1 -c 8192 --jinja
+    environment:
+      LLAMA_CACHE: /root/.cache/llama.cpp
+    volumes:
+      - llama_cache:/root/.cache/llama.cpp
+    deploy:
+      resources:
+        reservations:
+          devices:
+            - driver: nvidia
+              count: all
+              capabilities: [gpu]
+
   llm:
     build:
       dockerfile: llm_service/Dockerfile.cuda
@@ -22,6 +48,10 @@ services:
     volumes:
       - ./models.cuda.json:/app/models.cuda.json:ro
       - hf_cache:/root/.cache/huggingface
+    depends_on:
+      llamacpp:
+        condition: service_started
 
 volumes:
   hf_cache:
+  llama_cache:

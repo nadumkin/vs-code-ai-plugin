@@ -23,6 +23,7 @@ from typing import Any
 
 from .base import BaseModelAdapter
 from .echo_adapter import EchoAdapter
+from .llama_server_adapter import LlamaServerAdapter
 from .openrouter_adapter import OpenRouterAdapter
 
 logger = logging.getLogger("llm_service.registry")
@@ -32,6 +33,7 @@ logger = logging.getLogger("llm_service.registry")
 _ADAPTER_TYPES: dict[str, type[BaseModelAdapter]] = {
     "echo": EchoAdapter,
     "openrouter": OpenRouterAdapter,
+    "llama_server": LlamaServerAdapter,
 }
 
 

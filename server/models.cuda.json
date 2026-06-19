@@ -26,11 +26,8 @@
     },
     {
       "id": "qwen/qwen1.5-moe-a2.7b-chat",
-      "adapter": "hf_local",
-      "params": {
-        "model_path": "Qwen/Qwen1.5-MoE-A2.7B-Chat",
-        "max_new_tokens": 256
-      }
+      "adapter": "llama_server",
+      "params": {}
     }
   ]
 }
