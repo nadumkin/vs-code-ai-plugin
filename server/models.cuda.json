@@ -17,11 +17,20 @@
       }
     },
     {
+      "id": "qwen/qwen2.5-coder-3b",
+      "adapter": "hf_local",
+      "params": {
+        "model_path": "Qwen/Qwen2.5-Coder-3B-Instruct",
+        "max_new_tokens": 1024
+      }
+    },
+    {
       "id": "qwen/qwen2.5-coder-7b",
       "adapter": "hf_local",
       "params": {
         "model_path": "Qwen/Qwen2.5-Coder-7B-Instruct",
-        "max_new_tokens": 1024
+        "max_new_tokens": 1024,
+        "quantization": "4bit"
       }
     },
     {

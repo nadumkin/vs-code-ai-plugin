@@ -12,8 +12,10 @@ the plugin can apply file edits / run commands — same as a real provider.
 """
 
 import asyncio
+import gc
 import json
 import re
+import threading
 from typing import Any
 
 from common.schemas import ChatRequest, build_completion
@@ -25,6 +27,13 @@ from .base import BaseModelAdapter
 # same JSON inside a ```json fenced block — handle both (plus a bare JSON object).
 _TOOL_CALL_RE = re.compile(r"<tool_call>\s*(.*?)\s*</tool_call>", re.DOTALL)
 _FENCE_RE = re.compile(r"```(?:json|tool_call)?\s*(.*?)\s*```", re.DOTALL)
+
+# Single-GPU policy: only one hf_local model may hold weights at a time.
+# Switching models unloads the previous one (VRAM on a 12 GB card can't fit
+# e.g. 3B bf16 + 7B nf4 together). The lock also serializes load/generate so a
+# request to model B can't unload model A mid-generation.
+_gpu_lock = threading.Lock()
+_loaded_adapter: "HFLocalAdapter | None" = None
 
 
 class HFLocalAdapter(BaseModelAdapter):
@@ -38,24 +47,80 @@ class HFLocalAdapter(BaseModelAdapter):
         self._torch = torch
         self._model_path = params.get("model_path", "Qwen/Qwen1.5-MoE-A2.7B-Chat")
         self._max_new_tokens = int(params.get("max_new_tokens", 256))
+        # "4bit" (NF4) / "8bit" / None. On a 12 GB card (RTX 4070) a 7B model in
+        # bf16 (~15 GB) doesn't fit and accelerate offloads layers to CPU, which
+        # is dramatically slow; 4-bit shrinks it to ~5 GB so it stays on-GPU.
+        self._quantization = params.get("quantization")
         # Weak models (e.g. 0.5B) can't drive tool-calling; ignore advertised tools
         # so they return the edited file as a code block (applied via the fallback).
         self._supports_tools = bool(params.get("supports_tools", True))
         self._device = detect_device()
-        self._dtype = torch.float16 if self._device in ("cuda", "mps") else torch.float32
+        # bfloat16: numerically more stable than float16 on modern NVIDIA GPUs
+        # (Ampere+) and mandatory for Blackwell (RTX 50xx) correctness.
+        # MPS only supports float16, CPU needs float32.
+        if self._device == "cuda":
+            self._dtype = torch.bfloat16
+        elif self._device == "mps":
+            self._dtype = torch.float16
+        else:
+            self._dtype = torch.float32
         self._model = None
         self._tokenizer = None
 
+    def _unload(self) -> None:
+        """Drop weights and return the memory to the device (called under _gpu_lock)."""
+        self._model = None
+        self._tokenizer = None
+        gc.collect()
+        if self._device == "cuda":
+            self._torch.cuda.empty_cache()
+
     def _ensure_loaded(self) -> None:
+        """Load weights lazily; evict the previously loaded model first.
+
+        Must be called under ``_gpu_lock``.
+        """
+        global _loaded_adapter
         if self._model is not None:
             return
+        if _loaded_adapter is not None and _loaded_adapter is not self:
+            _loaded_adapter._unload()
+            _loaded_adapter = None
         from transformers import AutoModelForCausalLM, AutoTokenizer
 
         self._tokenizer = AutoTokenizer.from_pretrained(self._model_path)
         if self._device == "cuda":
-            # Let accelerate place / shard / offload large models across the GPU(s).
+            # flash_attention_2: 2–4× faster on Ampere+ (RTX 30/40/50xx).
+            # Falls back to eager if flash-attn is not installed.
+            attn = "flash_attention_2"
+            try:
+                import flash_attn  # noqa: F401
+            except ImportError:
+                attn = "eager"
+
+            kwargs: dict[str, Any] = dict(
+                torch_dtype=self._dtype,
+                device_map="auto",
+                attn_implementation=attn,
+            )
+            if self._quantization in ("4bit", "8bit"):
+                from transformers import BitsAndBytesConfig
+
+                if self._quantization == "4bit":
+                    kwargs["quantization_config"] = BitsAndBytesConfig(
+                        load_in_4bit=True,
+                        bnb_4bit_quant_type="nf4",
+                        bnb_4bit_compute_dtype=self._dtype,
+                        bnb_4bit_use_double_quant=True,
+                    )
+                else:
+                    kwargs["quantization_config"] = BitsAndBytesConfig(
+                        load_in_8bit=True
+                    )
+                # bitsandbytes manages placement; dtype is set via compute_dtype.
+                kwargs.pop("torch_dtype")
             self._model = AutoModelForCausalLM.from_pretrained(
-                self._model_path, torch_dtype=self._dtype, device_map="auto"
+                self._model_path, **kwargs
             )
         else:
             model = AutoModelForCausalLM.from_pretrained(
@@ -64,6 +129,7 @@ class HFLocalAdapter(BaseModelAdapter):
             model.to(self._device)
             self._model = model
         self._model.eval()
+        _loaded_adapter = self
 
     def _build_inputs(self, request: ChatRequest):
         """Render the prompt, advertising tools to the model when present."""
@@ -81,22 +147,28 @@ class HFLocalAdapter(BaseModelAdapter):
         )
 
     def _generate_sync(self, request: ChatRequest) -> str:
-        self._ensure_loaded()
-        assert self._tokenizer is not None and self._model is not None
-        torch = self._torch
+        # Hold the lock for the whole load+generate: another model's request
+        # must not evict our weights while we are decoding.
+        with _gpu_lock:
+            self._ensure_loaded()
+            assert self._tokenizer is not None and self._model is not None
+            torch = self._torch
 
-        inputs = self._build_inputs(request)
-        with torch.no_grad():
-            # Greedy decoding: deterministic + more reliable tool-call formatting
-            # for a small model (sampling made it emit tool calls only sometimes).
-            generated = self._model.generate(
-                inputs,
-                max_new_tokens=self._max_new_tokens,
-                do_sample=False,
-                pad_token_id=self._tokenizer.eos_token_id,
-            )
-        new_tokens = generated[0][inputs.shape[-1]:]
-        return self._tokenizer.decode(new_tokens, skip_special_tokens=True).strip()
+            inputs = self._build_inputs(request)
+            with torch.no_grad():
+                # Greedy decoding: deterministic + more reliable tool-call
+                # formatting for a small model (sampling made it emit tool
+                # calls only sometimes).
+                generated = self._model.generate(
+                    inputs,
+                    max_new_tokens=self._max_new_tokens,
+                    do_sample=False,
+                    pad_token_id=self._tokenizer.eos_token_id,
+                )
+            new_tokens = generated[0][inputs.shape[-1]:]
+            return self._tokenizer.decode(
+                new_tokens, skip_special_tokens=True
+            ).strip()
 
     @staticmethod
     def _parse_tool_calls(

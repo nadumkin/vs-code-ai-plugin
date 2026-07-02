@@ -1,13 +1,23 @@
 # LLM Service image with CUDA-enabled PyTorch for the hf_local adapter.
 # Build/run only on a host with an NVIDIA GPU + nvidia-container-toolkit:
 #   docker compose -f docker-compose.yml -f docker-compose.cuda.yml up --build -d
-FROM pytorch/pytorch:2.5.1-cuda12.1-cudnn9-runtime
+#
+# PyTorch 2.7 + CUDA 12.8: native kernels for Ada (RTX 40xx / SM_89) and
+# Blackwell (RTX 50xx / SM_120) — no slow PTX-JIT fallback.
+FROM pytorch/pytorch:2.7.0-cuda12.8-cudnn9-runtime
 
 WORKDIR /app
 
 COPY llm_service/requirements.txt ./requirements.txt
-# torch + CUDA are already provided by the base image; add service deps + HF stack.
-RUN pip install --no-cache-dir -r requirements.txt transformers==4.47.1 accelerate==1.2.1
+# torch + CUDA are already in the base image; add service deps + HF stack.
+# flash-attn: 2–4× faster attention; must be built against the installed torch.
+# bitsandbytes: 4-bit NF4 quantization so a 7B model fits a 12 GB card (RTX 4070)
+# entirely on-GPU instead of spilling layers to CPU RAM over PCIe.
+RUN pip install --no-cache-dir -r requirements.txt \
+    transformers==4.51.3 \
+    accelerate==1.7.0 \
+    bitsandbytes==0.45.5 \
+    flash-attn==2.7.4.post1 --no-build-isolation
 
 COPY common ./common
 COPY llm_service ./llm_service
