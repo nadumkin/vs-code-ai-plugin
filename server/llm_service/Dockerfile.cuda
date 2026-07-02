@@ -8,6 +8,12 @@ FROM pytorch/pytorch:2.7.0-cuda12.8-cudnn9-runtime
 
 WORKDIR /app
 
+# gcc: required at runtime by triton (used by bitsandbytes) to JIT-compile its
+# kernel launcher stubs. Plain cc is enough — nvcc is NOT needed for this.
+RUN apt-get update \
+    && apt-get install -y --no-install-recommends gcc \
+    && rm -rf /var/lib/apt/lists/*
+
 COPY llm_service/requirements.txt ./requirements.txt
 # torch + CUDA are already in the base image; add service deps + HF stack.
 # bitsandbytes: 4-bit NF4 quantization so a 7B model fits a 12 GB card (RTX 4070)
