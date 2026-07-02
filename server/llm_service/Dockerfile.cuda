@@ -10,14 +10,15 @@ WORKDIR /app
 
 COPY llm_service/requirements.txt ./requirements.txt
 # torch + CUDA are already in the base image; add service deps + HF stack.
-# flash-attn: 2–4× faster attention; must be built against the installed torch.
 # bitsandbytes: 4-bit NF4 quantization so a 7B model fits a 12 GB card (RTX 4070)
 # entirely on-GPU instead of spilling layers to CPU RAM over PCIe.
+# Attention uses torch's built-in fused SDPA kernels (see hf_local_adapter);
+# the flash-attn package would need nvcc (a '-devel' base image) to build,
+# for a marginal gain over SDPA at these model sizes.
 RUN pip install --no-cache-dir -r requirements.txt \
     transformers==4.51.3 \
     accelerate==1.7.0 \
-    bitsandbytes==0.45.5 \
-    flash-attn==2.7.4.post1 --no-build-isolation
+    bitsandbytes==0.45.5
 
 COPY common ./common
 COPY llm_service ./llm_service

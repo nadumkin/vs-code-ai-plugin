@@ -90,13 +90,14 @@ class HFLocalAdapter(BaseModelAdapter):
 
         self._tokenizer = AutoTokenizer.from_pretrained(self._model_path)
         if self._device == "cuda":
-            # flash_attention_2: 2–4× faster on Ampere+ (RTX 30/40/50xx).
-            # Falls back to eager if flash-attn is not installed.
+            # Prefer the flash-attn package when present; otherwise use torch's
+            # built-in fused SDPA kernels (FlashAttention-style, no extra deps —
+            # the runtime image has no nvcc to build flash-attn from source).
             attn = "flash_attention_2"
             try:
                 import flash_attn  # noqa: F401
             except ImportError:
-                attn = "eager"
+                attn = "sdpa"
 
             kwargs: dict[str, Any] = dict(
                 torch_dtype=self._dtype,
