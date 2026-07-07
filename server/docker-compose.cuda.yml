@@ -20,8 +20,11 @@ services:
   #   -ub/-b 2048            - larger batches recover prompt-processing speed
   #   -t 8                   - leave 2 of the 10 cores for the other services
   #   --jinja                - GGUF chat template (enables Qwen3 tool calling)
+  # -c 32768: the plugin's agent prompts (system + tools + file context) start
+  # at ~9-10k tokens and grow with every tool round-trip in a multi-step turn.
+  # Costs ~0.8 GB VRAM with GQA + q8_0 KV-cache (the model supports up to 256k).
   # Tuning: watch `nvidia-smi` — if VRAM has headroom, lower --n-cpu-moe (more
-  # experts on GPU = faster); if it OOMs, raise it or drop -c to 4096.
+  # experts on GPU = faster); if it OOMs, raise --n-cpu-moe by 2.
   # The GGUF (~18 GB) is pulled from HuggingFace on first start into llama_cache.
   llamacpp:
     image: ghcr.io/ggml-org/llama.cpp:server-cuda
@@ -30,7 +33,7 @@ services:
       --host 0.0.0.0 --port 8080
       -ngl 99 --n-cpu-moe 24
       -fa 1 -ctk q8_0 -ctv q8_0
-      -c 8192 -ub 2048 -b 2048
+      -c 32768 -ub 2048 -b 2048
       -t 8 --jinja
     environment:
       LLAMA_CACHE: /root/.cache/llama.cpp
