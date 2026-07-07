@@ -7,20 +7,32 @@
 # persistent HuggingFace cache so model weights are downloaded only once.
 # NOTE: has no effect on Docker Desktop for Mac (no GPU passthrough).
 services:
-  # llama.cpp server running the Qwen MoE with experts offloaded to CPU RAM
-  # (--cpu-moe) so a ~14B-param MoE fits on an 8 GB GPU: attention/context stay
-  # on the GPU, expert weights live in system RAM. Exposes an OpenAI-compatible
-  # API that the llm service's llama_server adapter calls. See
-  # https://habr.com/ru/articles/961478/.
-  # The GGUF weights are pulled from HuggingFace on first start into llama_cache
-  # (override the repo/quant via the -hf tag if you want a different size).
+  # llama.cpp server running Qwen3-30B-A3B (MoE: 30B total, ~3.3B active per
+  # token) with experts offloaded to CPU RAM (--cpu-moe): attention/KV-cache
+  # stay on the GPU, the large sparsely-used expert weights live in system RAM,
+  # so the model runs on a 12 GB card. See https://habr.com/ru/articles/961478/.
+  #
+  # Tuned for this host: RTX 4070 12 GB, 19 GB RAM, 10-core i7-13700 VM.
+  # The full --cpu-moe offload needs ~18 GB RAM (doesn't fit here), so we split
+  # the Q4_K_XL experts (~17.7 GB, 48 layers) between GPU and RAM instead:
+  #   -ngl 99 --n-cpu-moe 30 - everything on GPU except 30 layers' experts
+  #                            (~10 GB stays in RAM, ~9 GB total on GPU)
+  #   -fa 1 -ctk/-ctv q8_0   - flash attention + quantized KV-cache (VRAM)
+  #   -ub/-b 2048            - larger batches recover prompt-processing speed
+  #   -t 8                   - leave 2 of the 10 cores for the other services
+  #   --jinja                - GGUF chat template (enables Qwen3 tool calling)
+  # Tuning: watch `nvidia-smi` — if VRAM has headroom, lower --n-cpu-moe (more
+  # experts on GPU = faster); if it OOMs, raise it or drop -c to 4096.
+  # The GGUF (~18 GB) is pulled from HuggingFace on first start into llama_cache.
   llamacpp:
     image: ghcr.io/ggml-org/llama.cpp:server-cuda
     command: >
-      -hf RichardErkhov/Qwen_-_Qwen1.5-MoE-A2.7B-Chat-gguf:Q4_K_M
+      -hf unsloth/Qwen3-30B-A3B-Instruct-2507-GGUF:Q4_K_XL
       --host 0.0.0.0 --port 8080
-      -ngl 99 --cpu-moe
-      -fa 1 -c 8192 --jinja
+      -ngl 99 --n-cpu-moe 30
+      -fa 1 -ctk q8_0 -ctv q8_0
+      -c 8192 -ub 2048 -b 2048
+      -t 8 --jinja
     environment:
       LLAMA_CACHE: /root/.cache/llama.cpp
     volumes:
