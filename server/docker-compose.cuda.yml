@@ -12,11 +12,10 @@ services:
   # stay on the GPU, the large sparsely-used expert weights live in system RAM,
   # so the model runs on a 12 GB card. See https://habr.com/ru/articles/961478/.
   #
-  # Tuned for this host: RTX 4070 12 GB, 19 GB RAM, 10-core i7-13700 VM.
-  # The full --cpu-moe offload needs ~18 GB RAM (doesn't fit here), so we split
-  # the Q4_K_XL experts (~17.7 GB, 48 layers) between GPU and RAM instead:
-  #   -ngl 99 --n-cpu-moe 30 - everything on GPU except 30 layers' experts
-  #                            (~10 GB stays in RAM, ~9 GB total on GPU)
+  # Tuned for this host: RTX 4070 12 GB, 27 GB RAM, 10-core i7-13700 VM.
+  # The Q4_K_XL experts (~17.7 GB, 48 layers) are split between GPU and RAM:
+  #   -ngl 99 --n-cpu-moe 24 - everything on GPU except 24 layers' experts
+  #                            (measured: ~11 GB VRAM, ~9 GB of experts in RAM)
   #   -fa 1 -ctk/-ctv q8_0   - flash attention + quantized KV-cache (VRAM)
   #   -ub/-b 2048            - larger batches recover prompt-processing speed
   #   -t 8                   - leave 2 of the 10 cores for the other services
@@ -29,7 +28,7 @@ services:
     command: >
       -hf unsloth/Qwen3-30B-A3B-Instruct-2507-GGUF:Q4_K_XL
       --host 0.0.0.0 --port 8080
-      -ngl 99 --n-cpu-moe 30
+      -ngl 99 --n-cpu-moe 24
       -fa 1 -ctk q8_0 -ctv q8_0
       -c 8192 -ub 2048 -b 2048
       -t 8 --jinja
