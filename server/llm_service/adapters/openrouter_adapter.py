@@ -33,6 +33,11 @@ class OpenRouterAdapter(BaseModelAdapter):
         body = request.model_dump(exclude_none=True)
         if self._upstream_model:
             body["model"] = self._upstream_model
+        # Strict servers (llama.cpp) return 400 for tool_choice with no tools;
+        # hosted APIs also have no use for an empty tools list.
+        if not body.get("tools"):
+            body.pop("tools", None)
+            body.pop("tool_choice", None)
 
         headers = {
             "Content-Type": "application/json",
@@ -45,5 +50,11 @@ class OpenRouterAdapter(BaseModelAdapter):
 
         async with httpx.AsyncClient(timeout=self._timeout) as client:
             response = await client.post(self._base_url, headers=headers, json=body)
-            response.raise_for_status()
+            if response.status_code >= 400:
+                # Surface the upstream's error body — raise_for_status() would
+                # drop it, leaving only an opaque status code in our logs.
+                raise RuntimeError(
+                    f"upstream returned HTTP {response.status_code}: "
+                    f"{response.text[:500]}"
+                )
             return response.json()
