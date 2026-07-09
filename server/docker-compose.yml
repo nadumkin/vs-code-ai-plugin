@@ -5,6 +5,7 @@ x-common-env: &common-env
 services:
   postgres:
     image: postgres:16
+    restart: unless-stopped
     environment:
       POSTGRES_DB: aiplugin
       POSTGRES_USER: aiplugin
@@ -21,6 +22,7 @@ services:
 
   rabbitmq:
     image: rabbitmq:3-management
+    restart: unless-stopped
     ports:
       - "5672:5672"
       - "15672:15672" # management UI (guest/guest)
@@ -34,6 +36,7 @@ services:
     build:
       context: .
       dockerfile: proxy_service/Dockerfile
+    restart: unless-stopped
     environment:
       <<: *common-env
       TOKENS_FILE: /app/tokens.json
@@ -51,6 +54,7 @@ services:
     build:
       context: .
       dockerfile: request_service/Dockerfile
+    restart: unless-stopped
     environment:
       <<: *common-env
       TOKENS_FILE: /app/tokens.json
@@ -70,6 +74,7 @@ services:
       dockerfile: llm_service/Dockerfile
       args:
         INSTALL_HF: "true" # bake torch+transformers so the small local model runs on CPU
+    restart: unless-stopped
     environment:
       <<: *common-env
       MODELS_FILE: /app/models.json

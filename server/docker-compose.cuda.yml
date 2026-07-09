@@ -28,6 +28,7 @@ services:
   # The GGUF (~18 GB) is pulled from HuggingFace on first start into llama_cache.
   llamacpp:
     image: ghcr.io/ggml-org/llama.cpp:server-cuda
+    restart: unless-stopped
     command: >
       -hf unsloth/Qwen3-30B-A3B-Instruct-2507-GGUF:Q4_K_XL
       --host 0.0.0.0 --port 8080
